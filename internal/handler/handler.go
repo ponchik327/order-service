@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"order_service/internal/domain"
+	"order_service/internal/queue"
 	"order_service/internal/service"
+	"strconv"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 // OrderHandler определяет интерфейс для HTTP-хендлеров заказов.
 type OrderHandler interface {
-	CreateOrder(w http.ResponseWriter, r *http.Request)
 	GetOrderByID(w http.ResponseWriter, r *http.Request)
+	GenerateOrders(w http.ResponseWriter, r *http.Request)
+	SendOrderToKafka(w http.ResponseWriter, r *http.Request)
 }
 
 // orderHandler — реализация OrderHandler.
@@ -22,41 +27,6 @@ type orderHandler struct {
 // NewOrderHandler создает новый экземпляр orderHandler.
 func NewOrderHandler(service service.OrderService) OrderHandler {
 	return &orderHandler{service: service}
-}
-
-// CreateOrder обрабатывает POST /order/ для создания заказа.
-func (h *orderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
-	// Проверяем метод запроса
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Декодируем JSON из тела запроса
-	var order domain.Order
-	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Создаем контекст из запроса
-	ctx := r.Context()
-
-	// Вызываем сервис для создания заказа
-	if err := h.service.CreateOrder(ctx, &order); err != nil {
-		http.Error(w, "Failed to create order: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Устанавливаем заголовок Content-Type
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
-	// Возвращаем созданный заказ
-	if err := json.NewEncoder(w).Encode(order); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
 }
 
 // GetOrderByID обрабатывает GET /order/{orderUID} для получения заказа.
@@ -101,4 +71,81 @@ func (h *orderHandler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *orderHandler) GenerateOrders(w http.ResponseWriter, r *http.Request) {
+	// Получаем параметр count из query
+	countStr := r.URL.Query().Get("count")
+	count, err := strconv.Atoi(countStr)
+	if err != nil || count < 1 {
+		http.Error(w, `{"error": "Invalid count parameter"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Ограничиваем максимальное количество заказов
+	if count > 1000 {
+		http.Error(w, `{"error": "Count exceeds maximum limit of 1000"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Генерируем заказы
+	orders := make([]domain.Order, count)
+	for i := 0; i < count; i++ {
+		orders[i] = domain.GenerateRandomOrder()
+	}
+
+	// Устанавливаем заголовок Content-Type
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Сериализуем и отправляем ответ
+	if err := json.NewEncoder(w).Encode(orders); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *orderHandler) SendOrderToKafka(w http.ResponseWriter, r *http.Request) {
+	var order domain.Order
+
+	// Декодируем JSON из тела запроса
+	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+		http.Error(w, `{"error": "Invalid order JSON"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Сериализация в JSON
+	orderJSON, err := json.Marshal(order)
+	if err != nil {
+		http.Error(w, `{"error": "Failed to marshal order"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Инициализация Kafka producer
+	producer, err := queue.StartKafkaProducer()
+	if err != nil {
+		http.Error(w, `{"error": "Failed to connect to Kafka"}`, http.StatusInternalServerError)
+		return
+	}
+	defer producer.Close()
+
+	// Отправляем сообщение в Kafka
+	topic := "orders"
+	err = producer.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Value:          orderJSON,
+	}, nil)
+
+	if err != nil {
+		http.Error(w, `{"error": "Failed to send message to Kafka"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Ждём подтверждения (или таймаута)
+	producer.Flush(1000)
+
+	// Ответ клиенту
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Order sent to Kafka successfully"})
 }

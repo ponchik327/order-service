@@ -1,6 +1,8 @@
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 // Order представляет доменную модель заказа.
 type Order struct {

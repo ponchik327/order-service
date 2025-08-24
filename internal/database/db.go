@@ -13,7 +13,7 @@ func InitDB() (*sql.DB, error) {
 	// Получаем строку подключения из переменной окружения
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://user:password@localhost:5432/orders_db?sslmode=disable"
+		dsn = "postgres://user:password@localhost:5432/orders_db?sslmode=disable" // нужно вынести в конфиг .env файл
 	}
 
 	// Открываем соединение с базой данных
