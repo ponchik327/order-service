@@ -1,10 +1,14 @@
 package queue
 
-import "github.com/confluentinc/confluent-kafka-go/v2/kafka"
+import (
+	"order_service/internal/config"
 
-func StartKafkaProducer() (*kafka.Producer, error) {
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+)
+
+func StartKafkaProducer(cfg *config.Config) (*kafka.Producer, error) {
 	config := &kafka.ConfigMap{
-		"bootstrap.servers": "localhost:29092",
+		"bootstrap.servers": cfg.Kafka.Adress,
 	}
 	producer, err := kafka.NewProducer(config)
 	if err != nil {

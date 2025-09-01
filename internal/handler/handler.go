@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"order_service/internal/config"
 	"order_service/internal/domain"
 	"order_service/internal/queue"
 	"order_service/internal/service"
@@ -22,11 +23,15 @@ type OrderHandler interface {
 // orderHandler — реализация OrderHandler.
 type orderHandler struct {
 	service service.OrderService
+	config  *config.Config
 }
 
 // NewOrderHandler создает новый экземпляр orderHandler.
-func NewOrderHandler(service service.OrderService) OrderHandler {
-	return &orderHandler{service: service}
+func NewOrderHandler(service service.OrderService, config *config.Config) OrderHandler {
+	return &orderHandler{
+		service: service,
+		config:  config,
+	}
 }
 
 // GetOrderByID обрабатывает GET /order/{orderUID} для получения заказа.
@@ -122,7 +127,7 @@ func (h *orderHandler) SendOrderToKafka(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Инициализация Kafka producer
-	producer, err := queue.StartKafkaProducer()
+	producer, err := queue.StartKafkaProducer(h.config)
 	if err != nil {
 		http.Error(w, `{"error": "Failed to connect to Kafka"}`, http.StatusInternalServerError)
 		return

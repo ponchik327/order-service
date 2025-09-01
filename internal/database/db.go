@@ -3,18 +3,26 @@ package database
 import (
 	"database/sql"
 	"log"
-	"os"
+	"order_service/internal/config"
 
 	_ "github.com/lib/pq"
 )
 
-// InitDB инициализирует подключение к PostgreSQL.
-func InitDB() (*sql.DB, error) {
-	// Получаем строку подключения из переменной окружения
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://user:password@localhost:5432/orders_db?sslmode=disable" // нужно вынести в конфиг .env файл
+// Подключаем к PostgreSql
+func InitDB(cfg *config.Config) (*sql.DB, error) {
+	var sslMode string
+	if cfg.Database.SslMode {
+		sslMode = "enable"
+	} else {
+		sslMode = "disable"
 	}
+
+	// Достаём данные для подключения из конифга
+	dsn := "postgres://" + cfg.Database.User +
+		":" + cfg.Database.Password +
+		"@" + cfg.Database.Adress +
+		"/" + cfg.Database.Name +
+		"?sslmode=" + sslMode
 
 	// Открываем соединение с базой данных
 	db, err := sql.Open("postgres", dsn)

@@ -8,17 +8,18 @@ import (
 	"os/signal"
 	"syscall"
 
+	"order_service/internal/config"
 	"order_service/internal/domain"
 	"order_service/internal/service"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-func StartKafkaConsumer(svc service.OrderService) {
+func StartKafkaConsumer(svc service.OrderService, cfg *config.Config) {
 	config := &kafka.ConfigMap{
-		"bootstrap.servers": "localhost:29092", // нужно вынести в конфиг .env файл
-		"group.id":          "order-consumer-group",
-		"auto.offset.reset": "earliest",
+		"bootstrap.servers": cfg.Kafka.Adress,
+		"group.id":          cfg.Kafka.GroupId,
+		"auto.offset.reset": cfg.Kafka.OffsetReset,
 	}
 
 	consumer, err := kafka.NewConsumer(config)
@@ -27,7 +28,7 @@ func StartKafkaConsumer(svc service.OrderService) {
 	}
 	defer consumer.Close()
 
-	topic := "orders"
+	topic := cfg.Kafka.Topic
 	err = consumer.SubscribeTopics([]string{topic}, nil)
 	if err != nil {
 		log.Fatalf("Failed to subscribe: %s", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"order_service/internal/config"
 	"order_service/internal/database"
 	"order_service/internal/handler"
 	"order_service/internal/middleware"
@@ -20,8 +21,11 @@ import (
 
 // main — точка входа приложения.
 func main() {
+	// Загрузка конфига
+	cfg := config.MustLoad()
+
 	// Инициализация подключения к базе данных
-	db, err := database.InitDB()
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -29,7 +33,7 @@ func main() {
 	// Инициализация слоев
 	repo := repository.NewOrderRepository(db)
 	svc := service.NewOrderService(repo)
-	h := handler.NewOrderHandler(svc)
+	h := handler.NewOrderHandler(svc, cfg)
 
 	// Настройка маршрутизатора chi
 	r := chi.NewRouter()
@@ -53,22 +57,19 @@ func main() {
 	})
 
 	// Запуск Kafka Consumer в горутине с сервисом
-	go queue.StartKafkaConsumer(svc)
-
-	// Получение порта из переменной окружения или использование значения по умолчанию
-	port := os.Getenv("PORT") // нужно вынести в конфиг .env файл
-	if port == "" {
-		port = "8081"
-	}
+	go queue.StartKafkaConsumer(svc, cfg)
 
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: r,
+		Addr:         cfg.HttpServer.Adress,
+		Handler:      r,
+		WriteTimeout: cfg.HttpServer.Timeout,
+		ReadTimeout:  cfg.HttpServer.Timeout,
+		IdleTimeout:  cfg.HttpServer.IdleTimeout,
 	}
 
 	// Запуск HTTP-сервера
 	go func() {
-		log.Printf("Starting server on :%s", port)
+		log.Printf("Starting server on :%s", cfg.HttpServer.Adress)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
