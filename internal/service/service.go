@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"order_service/internal/config"
 	"order_service/internal/domain"
 	"order_service/internal/repository"
 )
@@ -15,12 +16,16 @@ type OrderService interface {
 
 // orderService — реализация OrderService.
 type orderService struct {
-	repo repository.OrderRepository
+	repo   repository.OrderRepository
+	config *config.Config
 }
 
 // NewOrderService создает новый экземпляр orderService.
-func NewOrderService(repo repository.OrderRepository) OrderService {
-	return &orderService{repo: repo}
+func NewOrderService(repo repository.OrderRepository, config *config.Config) OrderService {
+	return &orderService{
+		repo:   repo,
+		config: config,
+	}
 }
 
 // CreateOrder создает заказ с базовой валидацией.

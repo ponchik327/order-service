@@ -32,7 +32,7 @@ func main() {
 
 	// Инициализация слоев
 	repo := repository.NewOrderRepository(db)
-	svc := service.NewOrderService(repo)
+	svc := service.NewOrderService(repo, cfg)
 	h := handler.NewOrderHandler(svc, cfg)
 
 	// Настройка маршрутизатора chi
