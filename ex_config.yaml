@@ -11,6 +11,6 @@ kafka:
   offset_reset: "earliest"
   topic: "orders"
 http_server:
-  adress: "localhost:8082"
+  adress: "localhost:8081"
   timeout: 10s
   idle_timeout: 60s

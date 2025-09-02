@@ -2,79 +2,102 @@ package queue
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
+	"sync"
 
 	"order_service/internal/config"
-	"order_service/internal/domain"
-	"order_service/internal/service"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-func StartKafkaConsumer(svc service.OrderService, cfg *config.Config) {
-	config := &kafka.ConfigMap{
-		"bootstrap.servers": cfg.Kafka.Adress,
-		"group.id":          cfg.Kafka.GroupId,
-		"auto.offset.reset": cfg.Kafka.OffsetReset,
+type OrderHandler interface {
+	HandleOrder(ctx context.Context, message []byte) error
+}
+
+type KafkaConsumer interface {
+	Start()
+	Stop()
+}
+
+type kafkaConsumer struct {
+	consumer *kafka.Consumer
+	config   *config.Config
+	handler  OrderHandler
+	wg       *sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+// Инициализирует новый консюмер
+func NewKafkaConsumer(handler OrderHandler, config *config.Config) (KafkaConsumer, error) {
+	cfg := &kafka.ConfigMap{
+		"bootstrap.servers": config.Kafka.Adress,
+		"group.id":          config.Kafka.GroupId,
+		"auto.offset.reset": config.Kafka.OffsetReset,
 	}
 
-	consumer, err := kafka.NewConsumer(config)
+	consumer, err := kafka.NewConsumer(cfg)
 	if err != nil {
-		log.Fatalf("Failed to create consumer: %s", err)
+		return nil, fmt.Errorf("failed to create consumer: %w", err)
 	}
-	defer consumer.Close()
 
-	topic := cfg.Kafka.Topic
-	err = consumer.SubscribeTopics([]string{topic}, nil)
+	err = consumer.SubscribeTopics([]string{config.Kafka.Topic}, nil)
 	if err != nil {
-		log.Fatalf("Failed to subscribe: %s", err)
+		return nil, fmt.Errorf("failed to subscribe to topics: %w", err)
 	}
 
-	log.Printf("Successfully subscribe to kafka topic:%s", topic)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+	return &kafkaConsumer{
+		consumer: consumer,
+		config:   config,
+		handler:  handler,
+		wg:       &sync.WaitGroup{},
+		ctx:      ctx,
+		cancel:   cancel,
+	}, nil
+}
 
-	run := true
-	for run {
-		select {
-		case sig := <-sigchan:
-			log.Printf("Caught signal %v: terminating", sig)
-			return
-		default:
-			ev := consumer.Poll(100)
-			if ev == nil {
-				continue
-			}
-			switch e := ev.(type) {
-			case *kafka.Message:
-				var order domain.Order
-				if err := json.Unmarshal(e.Value, &order); err != nil {
-					log.Printf("Failed to unmarshal order: %s", err)
-					// DLQ если нужно
+// Стартует работу консюмера
+func (k *kafkaConsumer) Start() {
+	go func() {
+		for {
+			select {
+			case <-k.ctx.Done():
+				return
+			default:
+				event := k.consumer.Poll(100)
+				if event == nil {
 					continue
 				}
-
-				// Вызов сервиса для сохранения
-				ctx := context.Background() // Или с таймаутом
-				if err := svc.CreateOrder(ctx, &order); err != nil {
-					log.Printf("Failed to process order %s: %s", order.OrderUID, err)
-					// DLQ или retry
-					continue
-				}
-
-				log.Printf("Successfully processed order: %s", order.OrderUID)
-				consumer.CommitMessage(e)
-			case kafka.Error:
-				log.Printf("Kafka error: %v", e)
-				if e.Code() == kafka.ErrAllBrokersDown {
-					run = false
-				}
+				k.consume(event)
 			}
 		}
+	}()
+}
+
+// Останавливает работу консюмера
+func (k *kafkaConsumer) Stop() {
+	k.cancel()
+	k.wg.Wait()
+	k.consumer.Close()
+}
+
+// Обрабатывает событие очереди
+func (k *kafkaConsumer) consume(event kafka.Event) {
+	k.wg.Add(1)
+	defer k.wg.Done()
+	switch e := event.(type) {
+	case *kafka.Message:
+		err := k.handler.HandleOrder(k.ctx, e.Value) // При отмене контекста транзакция бд ролбекнится, кафка не закомитится
+		if err != nil {
+			log.Printf("Failed handle order: %s", err)
+			return
+		}
+		k.consumer.CommitMessage(e)
+	case kafka.Error:
+		log.Printf("Kafka error: %v", e)
+		return
 	}
 }

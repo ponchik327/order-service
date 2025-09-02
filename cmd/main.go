@@ -29,6 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+	defer db.Close()
 
 	// Инициализация слоев
 	repo := repository.NewOrderRepository(db)
@@ -56,8 +57,13 @@ func main() {
 		http.Error(w, "Not Found", http.StatusNotFound)
 	})
 
-	// Запуск Kafka Consumer в горутине с сервисом
-	go queue.StartKafkaConsumer(svc, cfg)
+	// Инициализация кафки
+	cns, err := queue.NewKafkaConsumer(svc, cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize kafka: %v", err)
+	}
+	cns.Start()
+	defer cns.Stop()
 
 	srv := &http.Server{
 		Addr:         cfg.HttpServer.Adress,
@@ -69,7 +75,7 @@ func main() {
 
 	// Запуск HTTP-сервера
 	go func() {
-		log.Printf("Starting server on :%s", cfg.HttpServer.Adress)
+		log.Printf("Starting server on : %s", cfg.HttpServer.Adress)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -86,18 +92,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Закрываем соединение с БД
-	log.Println("Closing database connection...")
-	if err := db.Close(); err != nil {
-		log.Printf("Failed to close database connection: %v", err)
-	} else {
-		log.Println("Database connection closed successfully")
-	}
-
 	// Выполняем graceful shutdown
-	log.Println("Shutting down server...")
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server shutdown failed: %v", err)
 	}
-	log.Println("Server stopped gracefully")
 }
