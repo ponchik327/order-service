@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"order_service/internal/cache"
 	"order_service/internal/config"
 	"order_service/internal/database"
 	"order_service/internal/handler"
@@ -31,9 +32,17 @@ func main() {
 	}
 	defer db.Close()
 
+	// Инициализация кэша
+	cache := cache.NewCache(cfg)
+	err = cache.Ping()
+	if err != nil {
+		log.Fatalf("Failed to connect to cache: %v", err)
+	}
+	defer cache.Close()
+
 	// Инициализация слоев
 	repo := repository.NewOrderRepository(db)
-	svc := service.NewOrderService(repo, cfg)
+	svc := service.NewOrderService(repo, cfg, cache)
 	h := handler.NewOrderHandler(svc, cfg)
 
 	// Настройка маршрутизатора chi

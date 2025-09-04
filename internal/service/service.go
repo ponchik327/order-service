@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
+	"order_service/internal/cache"
 	"order_service/internal/config"
 	"order_service/internal/domain"
 	"order_service/internal/repository"
@@ -22,20 +22,22 @@ type OrderService interface {
 type orderService struct {
 	repo   repository.OrderRepository
 	config *config.Config
+	cache  cache.Cache
 }
 
 // NewOrderService создает новый экземпляр orderService.
-func NewOrderService(repo repository.OrderRepository, config *config.Config) OrderService {
+func NewOrderService(repo repository.OrderRepository, config *config.Config, cache cache.Cache) OrderService {
 	return &orderService{
 		repo:   repo,
 		config: config,
+		cache:  cache,
 	}
 }
 
 // CreateOrder создает заказ с базовой валидацией.
 func (s *orderService) CreateOrder(ctx context.Context, order *domain.Order) error {
 	if order.OrderUID == "" {
-		return errors.New("order_uid cannot be empty")
+		return domain.ErrOrderUIDEmpty
 	}
 	return s.repo.Create(ctx, order)
 }
@@ -43,9 +45,33 @@ func (s *orderService) CreateOrder(ctx context.Context, order *domain.Order) err
 // GetOrderByID получает заказ по order_uid.
 func (s *orderService) GetOrderByID(ctx context.Context, orderUID string) (*domain.Order, error) {
 	if orderUID == "" {
-		return nil, errors.New("order_uid cannot be empty")
+		return nil, domain.ErrOrderUIDEmpty
 	}
-	return s.repo.GetByID(ctx, orderUID)
+
+	// Сходили в кэш
+	order, err := s.cache.GetOrder(ctx, orderUID)
+	if err == nil {
+		return order, nil
+	}
+	cacheErr := err
+
+	// Кэш вернул ошибку, идём в БД
+	order, err = s.repo.GetByID(ctx, orderUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Кладём заказ в кэш
+	if cacheErr == cache.ErrNotFound {
+		err = s.cache.SetOrder(ctx, orderUID, order)
+		if err != nil {
+			log.Printf("Ошибка сохранения в кэш: %v\n", err)
+		}
+	} else { // Ошибка кэша не связана с отсутствием заказа
+		log.Printf("Ошибка кэша: %v, fallback на БД\n", err)
+	}
+
+	return order, nil
 }
 
 // HandleOrder парсит и сохраняет заказ

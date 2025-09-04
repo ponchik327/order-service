@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"order_service/internal/domain"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // OrderRepository определяет интерфейс для работы с заказами в хранилище.
@@ -27,10 +28,20 @@ func NewOrderRepository(db *sql.DB) OrderRepository {
 
 // Create сохраняет заказ и связанные данные в базу данных.
 func (r *orderRepository) Create(ctx context.Context, order *domain.Order) error {
+	// Проверка уникальности order_uid
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM orders WHERE order_uid = $1)`, order.OrderUID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("postgres check exists error: %w", domain.ErrInternal)
+	}
+	if exists {
+		return domain.ErrOrderUIDNotUnique
+	}
+
 	// Начать транзакцию
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("postgres begin tx error: %w", domain.ErrInternal)
 	}
 	defer tx.Rollback()
 
@@ -41,7 +52,10 @@ func (r *orderRepository) Create(ctx context.Context, order *domain.Order) error
 		order.OrderUID, order.TrackNumber, order.Entry, order.Locale, order.InternalSignature,
 		order.CustomerID, order.DeliveryService, order.Shardkey, order.SmID, order.DateCreated, order.OofShard)
 	if err != nil {
-		return err
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return domain.ErrOrderUIDNotUnique // Дубликат на уровне БД
+		}
+		return fmt.Errorf("postgres insert order error: %w", domain.ErrInternal)
 	}
 
 	// Вставка данных доставки
@@ -51,7 +65,7 @@ func (r *orderRepository) Create(ctx context.Context, order *domain.Order) error
 		order.OrderUID, order.Delivery.Name, order.Delivery.Phone, order.Delivery.Zip,
 		order.Delivery.City, order.Delivery.Address, order.Delivery.Region, order.Delivery.Email)
 	if err != nil {
-		return err
+		return fmt.Errorf("postgres insert delivery error: %w", domain.ErrInternal)
 	}
 
 	// Вставка данных оплаты
@@ -62,7 +76,7 @@ func (r *orderRepository) Create(ctx context.Context, order *domain.Order) error
 		order.Payment.Provider, order.Payment.Amount, order.Payment.PaymentDt, order.Payment.Bank,
 		order.Payment.DeliveryCost, order.Payment.GoodsTotal, order.Payment.CustomFee)
 	if err != nil {
-		return err
+		return fmt.Errorf("postgres insert payment error: %w", domain.ErrInternal)
 	}
 
 	// Вставка товаров
@@ -73,12 +87,15 @@ func (r *orderRepository) Create(ctx context.Context, order *domain.Order) error
 			order.OrderUID, item.ChrtID, item.TrackNumber, item.Price, item.Rid, item.Name,
 			item.Sale, item.Size, item.TotalPrice, item.NmID, item.Brand, item.Status)
 		if err != nil {
-			return err
+			return fmt.Errorf("postgres insert item error: %w", domain.ErrInternal)
 		}
 	}
 
 	// Подтвердить транзакцию
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("postgres commit error: %w", domain.ErrInternal)
+	}
+	return nil
 }
 
 // GetByID получает заказ по order_uid.
@@ -91,11 +108,11 @@ func (r *orderRepository) GetByID(ctx context.Context, orderUID string) (*domain
         FROM orders WHERE order_uid = $1`, orderUID).
 		Scan(&order.OrderUID, &order.TrackNumber, &order.Entry, &order.Locale, &order.InternalSignature,
 			&order.CustomerID, &order.DeliveryService, &order.Shardkey, &order.SmID, &order.DateCreated, &order.OofShard)
-	if err == sql.ErrNoRows {
-		return nil, sql.ErrNoRows
-	}
 	if err != nil {
-		return nil, err
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("postgres order query error: %w", domain.ErrInternal)
 	}
 
 	// Получение данных доставки
@@ -105,7 +122,10 @@ func (r *orderRepository) GetByID(ctx context.Context, orderUID string) (*domain
 		Scan(&order.Delivery.Name, &order.Delivery.Phone, &order.Delivery.Zip, &order.Delivery.City,
 			&order.Delivery.Address, &order.Delivery.Region, &order.Delivery.Email)
 	if err != nil {
-		return nil, err
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("postgres delivery query error: %w", domain.ErrInternal)
 	}
 
 	// Получение данных оплаты
@@ -116,7 +136,10 @@ func (r *orderRepository) GetByID(ctx context.Context, orderUID string) (*domain
 			&order.Payment.Amount, &order.Payment.PaymentDt, &order.Payment.Bank, &order.Payment.DeliveryCost,
 			&order.Payment.GoodsTotal, &order.Payment.CustomFee)
 	if err != nil {
-		return nil, err
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("postgres payment query error: %w", domain.ErrInternal)
 	}
 
 	// Получение товаров
@@ -124,7 +147,7 @@ func (r *orderRepository) GetByID(ctx context.Context, orderUID string) (*domain
         SELECT chrt_id, track_number, price, rid, name, sale, size, total_price, nm_id, brand, status
         FROM items WHERE order_uid = $1`, orderUID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("postgres items query error: %w", domain.ErrInternal)
 	}
 	defer rows.Close()
 
@@ -134,9 +157,12 @@ func (r *orderRepository) GetByID(ctx context.Context, orderUID string) (*domain
 		err := rows.Scan(&item.ChrtID, &item.TrackNumber, &item.Price, &item.Rid, &item.Name,
 			&item.Sale, &item.Size, &item.TotalPrice, &item.NmID, &item.Brand, &item.Status)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("postgres items scan error: %w", domain.ErrInternal)
 		}
 		order.Items = append(order.Items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres items iteration error: %w", domain.ErrInternal)
 	}
 
 	return order, nil

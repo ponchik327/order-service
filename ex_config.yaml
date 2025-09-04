@@ -5,6 +5,9 @@ data_base:
   password: "password"
   name: "orders_db"
   ssl_mode: false
+cache:
+  adress: "localhost:6379"
+  ttl: 10m
 kafka:
   adress: "localhost:29092"
   group_id: "order-consumer-group"

@@ -61,7 +61,9 @@ func NewKafkaConsumer(handler OrderHandler, config *config.Config) (KafkaConsume
 
 // Стартует работу консюмера
 func (k *kafkaConsumer) Start() {
+	k.wg.Add(1)
 	go func() {
+		defer k.wg.Done()
 		for {
 			select {
 			case <-k.ctx.Done():
@@ -86,8 +88,6 @@ func (k *kafkaConsumer) Stop() {
 
 // Обрабатывает событие очереди
 func (k *kafkaConsumer) consume(event kafka.Event) {
-	k.wg.Add(1)
-	defer k.wg.Done()
 	switch e := event.(type) {
 	case *kafka.Message:
 		err := k.handler.HandleOrder(k.ctx, e.Value) // При отмене контекста транзакция бд ролбекнится, кафка не закомитится

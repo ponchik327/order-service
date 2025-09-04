@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"order_service/internal/config"
 	"order_service/internal/domain"
@@ -42,7 +42,7 @@ func (h *orderHandler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Извлекаем orderUID из URL (например, /order/b563feb7b2b84b6test)
+	// Извлекаем orderUID из URL
 	orderUID := r.URL.Path[len("/order/"):]
 	if orderUID == "" {
 		http.Error(w, "order_uid is required", http.StatusBadRequest)
@@ -55,15 +55,15 @@ func (h *orderHandler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	// Вызываем сервис для получения заказа
 	order, err := h.service.GetOrderByID(ctx, orderUID)
 	if err != nil {
-		if err.Error() == "order_uid cannot be empty" {
-			http.Error(w, "Invalid order_uid", http.StatusBadRequest)
-			return
+		if errors.Is(err, domain.ErrOrderUIDNotUnique) || errors.Is(err, domain.ErrOrderUIDEmpty) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
-		if err == sql.ErrNoRows {
-			http.Error(w, "Order not found", http.StatusNotFound)
-			return
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
 		}
-		http.Error(w, "Failed to get order: "+err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, domain.ErrInternal) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

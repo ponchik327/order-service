@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Env        string `yaml:"env" env-default:"local"`
 	Database   `yaml:"data_base"`
+	Cache      `yaml:"cache"`
 	Kafka      `yaml:"kafka"`
 	HttpServer `yaml:"http_server"`
 }
@@ -21,6 +22,11 @@ type Database struct {
 	Password string `yaml:"password" env-default:"password"`
 	Name     string `yaml:"name" env-default:"orders_db"`
 	SslMode  bool   `yaml:"ssl_mode" env-default:"false"`
+}
+
+type Cache struct {
+	Adress string        `yaml:"adress" env-default:"redis:6379"`
+	Ttl    time.Duration `yaml:"ttl" env-default:"10m"`
 }
 
 type Kafka struct {
