@@ -1,0 +1,19 @@
+env: "local" # dev, prod, local
+data_base:
+  adress: "postgres:5432"
+  user: "user"
+  password: "password"
+  name: "orders_db"
+  ssl_mode: false
+cache:
+  adress: "redis:6379"
+  ttl: 10m
+kafka:
+  adress: "kafka:29092"
+  group_id: "order-consumer-group"
+  offset_reset: "earliest"
+  topic: "orders"
+http_server:
+  adress: "0.0.0.0:8081"
+  timeout: 10s
+  idle_timeout: 60s

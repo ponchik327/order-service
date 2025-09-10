@@ -4,10 +4,8 @@ run:
 docker-up:
 	docker-compose up -d
 
-DB_URL = "user=user password=password host=localhost port=5432 dbname=orders_db sslmode=disable"
+clear-volumes:
+	docker volume rm order-service_postgres_data order-service_redis_data order-service_kafka_data	
 
-up:
-	goose -dir migrations postgres $(DB_URL) up
-
-down:
-	goose -dir migrations postgres $(DB_URL) down
+refresh-app:
+	docker-compose build --no-cache app

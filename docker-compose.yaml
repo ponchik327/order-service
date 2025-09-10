@@ -39,7 +39,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -79,6 +79,32 @@ services:
       retries: 5
     networks:
       - app-net
+
+  app:
+    build: .  # Строит из Dockerfile в текущей директории
+    container_name: go-server
+    depends_on:
+      postgres:
+        condition: service_healthy  # Ждёт, пока Postgres здоров (из healthcheck)
+      kafka:
+        condition: service_started  # Ждёт запуска Kafka
+      redis:
+        condition: service_healthy  # Ждёт, пока Redis здоров (из healthcheck)
+    environment:  # Опционально: передайте переменные для конфигурации сервера
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: orders_db
+      KAFKA_BROKER: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Добавьте другие ENV, если нужно (например, для вашего сервера)
+    ports:
+      - "8081:8081"  # Пробрасываем порт сервера наружу (скорректируйте на ваш порт)
+    networks:
+      - app-net
+    restart: unless-stopped  # Авторестарт при сбое
 
 networks:
   app-net:
