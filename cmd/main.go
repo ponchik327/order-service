@@ -33,16 +33,16 @@ func main() {
 	defer db.Close()
 
 	// Инициализация кэша
-	cache := cache.NewCache(cfg)
-	err = cache.Ping()
+	c := cache.NewCache(cfg)
+	err = c.Ping()
 	if err != nil {
 		log.Fatalf("Failed to connect to cache: %v", err)
 	}
-	defer cache.Close()
+	defer c.Close()
 
 	// Инициализация слоев
 	repo := repository.NewOrderRepository(db)
-	svc := service.NewOrderService(repo, cfg, cache)
+	svc := service.NewOrderService(repo, cfg, c)
 	h := handler.NewOrderHandler(svc, cfg)
 
 	// Настройка маршрутизатора chi
