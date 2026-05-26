@@ -119,4 +119,6 @@ go tool trace profiles/trace.out
 | #  | Что               | Бенчмарк | ns/op | B/op | allocs/op | Как найдено |
 |----|-------------------|----------|-------|------|-----------|-------------|
 | 00 | bench-инфраструктура + baseline | — | — | — | — | — |
+| 01 | генератор: `math/rand/v2` + buffer-based `randomString` + `strconv` вместо `fmt.Sprintf` | `GenerateRandomOrder` | −30.5% | −8.2% | −17.6% (17→14) | pprof: `rand.Int31n` 9% CPU + `prefix+string(result)` 90ms + `fmt.Sprintf` 9MB allocs |
+| 01 | то же                                                                                     | `GenerateOrders` (HTTP) | −12.2% | −4.6% | −15.9% (1885→1585) | то же |
 
