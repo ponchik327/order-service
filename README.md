@@ -121,4 +121,7 @@ go tool trace profiles/trace.out
 | 00 | bench-инфраструктура + baseline | — | — | — | — | — |
 | 01 | генератор: `math/rand/v2` + buffer-based `randomString` + `strconv` вместо `fmt.Sprintf` | `GenerateRandomOrder` | −30.5% | −8.2% | −17.6% (17→14) | pprof: `rand.Int31n` 9% CPU + `prefix+string(result)` 90ms + `fmt.Sprintf` 9MB allocs |
 | 01 | то же                                                                                     | `GenerateOrders` (HTTP) | −12.2% | −4.6% | −15.9% (1885→1585) | то же |
+| 02 | `middleware.RequestLogger`: буферим body только при `status >= 400` (+ подключили middleware в бенчмарках, как в проде) | `GenerateOrders` | −7.4% | **−45.5%** (228KB → 124KB) | ~ | code-review после iter1: `lrw.body.Write` копировал каждое тело без условия |
+| 02 | то же | `GetOrderByID_CacheHit` | ~ | −10.9% | −1 alloc | то же |
+| 02 | то же | `GetOrderByID_DBPath` | −19.4% | −10.4% | −1 alloc | то же |
 

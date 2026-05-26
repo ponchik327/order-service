@@ -18,22 +18,33 @@ package bench
 import (
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"order_service/internal/config"
 	"order_service/internal/domain"
 	"order_service/internal/handler"
+	"order_service/internal/middleware"
 	"order_service/internal/service"
 
 	"github.com/go-chi/chi/v5"
 )
 
+func TestMain(m *testing.M) {
+	// Глушим вывод логов middleware, иначе stderr I/O доминирует над
+	// измеряемой работой и маскирует app-side накладные.
+	log.SetOutput(io.Discard)
+	os.Exit(m.Run())
+}
+
 func newTestRouter(svc service.OrderService, cfg *config.Config) http.Handler {
 	h := handler.NewOrderHandler(svc, cfg)
 	r := chi.NewRouter()
+	r.Use(middleware.RequestLogger)
 	r.Route("/order", func(r chi.Router) {
 		r.Get("/{orderID}", h.GetOrderByID)
 		r.Get("/generate", h.GenerateOrders)

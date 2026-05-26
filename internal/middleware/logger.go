@@ -8,19 +8,27 @@ import (
 	"time"
 )
 
+// loggingResponseWriter перехватывает статус и опционально тело ответа.
+// Body буферизуется только когда статус >= 400 — на успешных ответах
+// мы тело не логируем, поэтому нет смысла платить копией каждого
+// Write'а в обёрнутый буфер (на больших ответах это 100KB+ на запрос).
 type loggingResponseWriter struct {
 	http.ResponseWriter
-	status int
-	body   bytes.Buffer
+	status      int
+	captureBody bool
+	body        bytes.Buffer
 }
 
 func (lrw *loggingResponseWriter) WriteHeader(code int) {
 	lrw.status = code
+	lrw.captureBody = code >= 400
 	lrw.ResponseWriter.WriteHeader(code)
 }
 
 func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
-	lrw.body.Write(b) // сохраняем копию
+	if lrw.captureBody {
+		lrw.body.Write(b)
+	}
 	return lrw.ResponseWriter.Write(b)
 }
 
