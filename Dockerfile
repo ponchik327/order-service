@@ -1,5 +1,5 @@
 # ---------- Stage 1: Build ----------
-FROM golang:1.23-bullseye AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN go build -o main ./cmd/
 COPY migrations ./migrations
 
 # ---------- Stage 2: Runtime ----------
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
