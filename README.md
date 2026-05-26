@@ -124,4 +124,6 @@ go tool trace profiles/trace.out
 | 02 | `middleware.RequestLogger`: буферим body только при `status >= 400` (+ подключили middleware в бенчмарках, как в проде) | `GenerateOrders` | −7.4% | **−45.5%** (228KB → 124KB) | ~ | code-review после iter1: `lrw.body.Write` копировал каждое тело без условия |
 | 02 | то же | `GetOrderByID_CacheHit` | ~ | −10.9% | −1 alloc | то же |
 | 02 | то же | `GetOrderByID_DBPath` | −19.4% | −10.4% | −1 alloc | то же |
+| 03 | `sync.Pool` для `*loggingResponseWriter` (lrw уходит на кучу из-за interface-cast при `next.ServeHTTP`) | `GetOrderByID_CacheHit` | ~ | −0.99% | −1 alloc (80→79) | pprof: `middleware.RequestLogger.func1` 1.5MB flat / 21.5MB cum в alloc_space |
+| 03 | то же | `GetOrderByID_DBPath` | ~ | −0.86% | −1 alloc (81→80) | то же |
 

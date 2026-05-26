@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -32,10 +33,32 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return lrw.ResponseWriter.Write(b)
 }
 
+// reset подготавливает обёртку к следующему использованию из пула.
+func (lrw *loggingResponseWriter) reset(w http.ResponseWriter) {
+	lrw.ResponseWriter = w
+	lrw.status = http.StatusOK
+	lrw.captureBody = false
+	lrw.body.Reset()
+}
+
+// lrwPool переиспользует обёртку между запросами. lrw уходит из стека
+// на кучу из-за конверсии в http.ResponseWriter (interface) при вызове
+// next.ServeHTTP, и в pprof виден отдельной аллокацией в горячем пути.
+var lrwPool = sync.Pool{
+	New: func() any { return &loggingResponseWriter{} },
+}
+
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		lrw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		lrw := lrwPool.Get().(*loggingResponseWriter)
+		lrw.reset(w)
+		defer func() {
+			// Очищаем ссылку на внешний writer, чтобы он не удерживался
+			// дольше нужного, и возвращаем обёртку в пул.
+			lrw.ResponseWriter = nil
+			lrwPool.Put(lrw)
+		}()
 
 		log.Printf("➡️  %s %s", r.Method, r.RequestURI)
 
