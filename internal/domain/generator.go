@@ -4,26 +4,26 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/google/uuid"
 )
 
 const randChars = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// appendRandomString дописывает в b префикс и length случайных символов из randChars.
-// math/rand/v2 использует per-P состояние и не блокируется на глобальном мьютексе.
-func appendRandomString(b []byte, prefix string, length int) []byte {
-	b = append(b, prefix...)
-	for i := 0; i < length; i++ {
-		b = append(b, randChars[rand.IntN(len(randChars))])
+// takeRandom апендит в bb префикс и randLen случайных символов из randChars,
+// и возвращает строку, ссылающуюся на этот участок backing array через
+// unsafe.String. Все строки заказа делят один buf, благодаря чему
+// GenerateRandomOrder делает одну аллокацию буфера вместо одиннадцати
+// отдельных make'ов. Buf должен иметь достаточный cap, иначе append
+// перевыделит массив и старые строки укажут на другой backing array.
+func takeRandom(bb *[]byte, prefix string, randLen int) string {
+	start := len(*bb)
+	*bb = append(*bb, prefix...)
+	for i := 0; i < randLen; i++ {
+		*bb = append(*bb, randChars[rand.IntN(len(randChars))])
 	}
-	return b
-}
-
-func randomString(prefix string, length int) string {
-	b := make([]byte, 0, len(prefix)+length)
-	b = appendRandomString(b, prefix, length)
-	return string(b)
+	return unsafe.String(&(*bb)[start], len(*bb)-start)
 }
 
 // appendZeroPadded дописывает десятичное n в b с ведущими нулями до width символов.
@@ -36,30 +36,45 @@ func appendZeroPadded(b []byte, n, width int) []byte {
 	return append(b, digits...)
 }
 
-func randomPhone() string {
-	b := make([]byte, 0, 11)
-	b = append(b, "+972"...)
-	b = appendZeroPadded(b, rand.IntN(10000000), 7)
-	return string(b)
-}
-
-func randomZip() string {
-	b := make([]byte, 0, 6)
-	b = appendZeroPadded(b, rand.IntN(1000000), 6)
-	return string(b)
-}
-
-func randomEmail() string {
-	const suffix = "@example.com"
-	b := make([]byte, 0, 4+6+len(suffix))
-	b = appendRandomString(b, "user", 6)
-	b = append(b, suffix...)
-	return string(b)
-}
-
 func GenerateRandomOrder() Order {
+	// Один backing array на все random-строки заказа.
+	// Сумма длин: WBIL+10, User+6, +972+7, 6, City+5, Street+8, Region+4,
+	// user+6+@example.com, rid+12, Product+6, Brand+5 = 134 байта. cap=160
+	// с запасом — append гарантированно не вызовет growSlice.
+	bb := make([]byte, 0, 160)
+
+	trackNumber := takeRandom(&bb, "WBIL", 10)
+	name := takeRandom(&bb, "User", 6)
+
+	// Phone: "+972" + 7 zero-padded digits
+	phoneStart := len(bb)
+	bb = append(bb, "+972"...)
+	bb = appendZeroPadded(bb, rand.IntN(10000000), 7)
+	phone := unsafe.String(&bb[phoneStart], len(bb)-phoneStart)
+
+	// Zip: 6 zero-padded digits
+	zipStart := len(bb)
+	bb = appendZeroPadded(bb, rand.IntN(1000000), 6)
+	zip := unsafe.String(&bb[zipStart], len(bb)-zipStart)
+
+	city := takeRandom(&bb, "City", 5)
+	address := takeRandom(&bb, "Street", 8)
+	region := takeRandom(&bb, "Region", 4)
+
+	// Email: "user" + 6 random + "@example.com"
+	emailStart := len(bb)
+	bb = append(bb, "user"...)
+	for i := 0; i < 6; i++ {
+		bb = append(bb, randChars[rand.IntN(len(randChars))])
+	}
+	bb = append(bb, "@example.com"...)
+	email := unsafe.String(&bb[emailStart], len(bb)-emailStart)
+
+	rid := takeRandom(&bb, "rid", 12)
+	productName := takeRandom(&bb, "Product", 6)
+	brand := takeRandom(&bb, "Brand", 5)
+
 	uid := uuid.New().String()
-	trackNumber := randomString("WBIL", 10)
 	price := rand.IntN(1000) + 100
 	sale := rand.IntN(50)
 	totalPrice := price * (100 - sale) / 100
@@ -69,13 +84,13 @@ func GenerateRandomOrder() Order {
 		TrackNumber: trackNumber,
 		Entry:       "WBIL",
 		Delivery: Delivery{
-			Name:    randomString("User", 6),
-			Phone:   randomPhone(),
-			Zip:     randomZip(),
-			City:    randomString("City", 5),
-			Address: randomString("Street", 8),
-			Region:  randomString("Region", 4),
-			Email:   randomEmail(),
+			Name:    name,
+			Phone:   phone,
+			Zip:     zip,
+			City:    city,
+			Address: address,
+			Region:  region,
+			Email:   email,
 		},
 		Payment: Payment{
 			Transaction:  uid,
@@ -93,13 +108,13 @@ func GenerateRandomOrder() Order {
 			ChrtID:      rand.IntN(10000000),
 			TrackNumber: trackNumber,
 			Price:       price,
-			Rid:         randomString("rid", 12),
-			Name:        randomString("Product", 6),
+			Rid:         rid,
+			Name:        productName,
 			Sale:        sale,
 			Size:        "0",
 			TotalPrice:  totalPrice,
 			NmID:        rand.IntN(10000000),
-			Brand:       randomString("Brand", 5),
+			Brand:       brand,
 			Status:      202,
 		}},
 		Locale:            "en",

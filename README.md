@@ -126,4 +126,25 @@ go tool trace profiles/trace.out
 | 02 | то же | `GetOrderByID_DBPath` | −19.4% | −10.4% | −1 alloc | то же |
 | 03 | `sync.Pool` для `*loggingResponseWriter` (lrw уходит на кучу из-за interface-cast при `next.ServeHTTP`) | `GetOrderByID_CacheHit` | ~ | −0.99% | −1 alloc (80→79) | pprof: `middleware.RequestLogger.func1` 1.5MB flat / 21.5MB cum в alloc_space |
 | 03 | то же | `GetOrderByID_DBPath` | ~ | −0.86% | −1 alloc (81→80) | то же |
+| 04 | один backing array на все random-строки заказа: 11 отдельных `make([]byte,…)` (TrackNumber, Name, Phone, Zip, City, Address, Region, Email, Rid, ProductName, Brand) → 1 общий buf + `unsafe.String` со сдвигом-длиной | `GenerateRandomOrder` | **−11.4%** | −2.2% | **−71.4%** (14 → 4) | pprof: `randomString` 19.5MB flat, `GenerateRandomOrder` cum 58MB |
+| 04 | то же | `GenerateOrders` (HTTP) | ~ | ~ | **−62.9%** (1591 → 590) | то же |
+
+### Итоги (baseline → iter4)
+
+`benchstat profiles/baseline.txt profiles/iter4.txt` (внимание: bench-сетап с iter2 включает middleware, в baseline его не было — поэтому численная асимметрия в `GetOrderByID_*` B/op/allocs не регрессия, а корректный учёт middleware-овер­хеда):
+
+| Бенчмарк | sec/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| `GenerateOrders` | **−9.6%** | −4.2% | **−68.7%** (1885 → 590) |
+| `GenerateRandomOrder` | **−37.1%** | −10.2% | **−76.5%** (17 → 4) |
+| `GetOrderByID_CacheHit` | ~ | +0.9%¹ | +5 allocs¹ |
+| `GetOrderByID_DBPath` | ~ | +0.9%¹ | +5 allocs¹ |
+| geomean | **−10.8%** | −3.3% | **−46.2%** |
+
+¹ Реальный middleware был добавлен в bench только в iter2 — до этого мы не учитывали его аллокации. После iter2+iter3 чистый middleware-вклад уже минимизирован (см. ряд 03).
+
+Главное, что осталось в pprof:
+- `bytes.growSlice` 76 MB (stdlib `encoding/json` encoder pool — наш пул не помогает) — побеждается только сменой JSON-библиотеки (sonic/easyjson).
+- `make([]domain.Order, count)` 95 MB — `sync.Pool` не сработал (под нагрузкой бенча `pool.New` с большим cap сам становился top-allocator).
+- `uuid.UUID.String` (36 байт/заказ), `time.Time.MarshalJSON` — неустранимо без слома API.
 

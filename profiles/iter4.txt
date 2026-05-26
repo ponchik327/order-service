@@ -1,0 +1,26 @@
+goos: linux
+goarch: amd64
+pkg: order_service/bench
+cpu: AMD Ryzen 5 3500U with Radeon Vega Mobile Gfx  
+BenchmarkGenerateOrders-8          	    2932	   1200261 ns/op	  124658 B/op	     590 allocs/op
+BenchmarkGenerateOrders-8          	    3036	   1123738 ns/op	  125163 B/op	     590 allocs/op
+BenchmarkGenerateOrders-8          	    3070	   1157108 ns/op	  124275 B/op	     590 allocs/op
+BenchmarkGenerateOrders-8          	    3134	   1135484 ns/op	  122756 B/op	     590 allocs/op
+BenchmarkGenerateOrders-8          	    2928	   1172493 ns/op	  129555 B/op	     591 allocs/op
+BenchmarkGetOrderByID_CacheHit-8   	   13335	    266181 ns/op	    7285 B/op	      79 allocs/op
+BenchmarkGetOrderByID_CacheHit-8   	   13692	    265523 ns/op	    7295 B/op	      79 allocs/op
+BenchmarkGetOrderByID_CacheHit-8   	   13436	    275290 ns/op	    7288 B/op	      79 allocs/op
+BenchmarkGetOrderByID_CacheHit-8   	   10000	    311708 ns/op	    7292 B/op	      79 allocs/op
+BenchmarkGetOrderByID_CacheHit-8   	   12232	    277745 ns/op	    7294 B/op	      79 allocs/op
+BenchmarkGetOrderByID_DBPath-8     	   12955	    262735 ns/op	    7765 B/op	      80 allocs/op
+BenchmarkGetOrderByID_DBPath-8     	   13300	    268348 ns/op	    7751 B/op	      80 allocs/op
+BenchmarkGetOrderByID_DBPath-8     	   12897	    273475 ns/op	    7762 B/op	      80 allocs/op
+BenchmarkGetOrderByID_DBPath-8     	   12816	    313437 ns/op	    7741 B/op	      80 allocs/op
+BenchmarkGetOrderByID_DBPath-8     	   13280	    258097 ns/op	    7739 B/op	      80 allocs/op
+BenchmarkGenerateRandomOrder-8     	 1600818	      2290 ns/op	     352 B/op	       4 allocs/op
+BenchmarkGenerateRandomOrder-8     	 1568004	      2232 ns/op	     352 B/op	       4 allocs/op
+BenchmarkGenerateRandomOrder-8     	 1566680	      2282 ns/op	     352 B/op	       4 allocs/op
+BenchmarkGenerateRandomOrder-8     	 1495746	      2372 ns/op	     352 B/op	       4 allocs/op
+BenchmarkGenerateRandomOrder-8     	 1625841	      2238 ns/op	     352 B/op	       4 allocs/op
+PASS
+ok  	order_service/bench	107.700s
